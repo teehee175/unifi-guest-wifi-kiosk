@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  psk-rotator:
+    build: .
+    container_name: psk-rotator
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    environment:
+      TZ: Australia/Sydney
+    volumes:
+      - ./.env:/var/www/html/.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - unifi-net
+networks:
+  unifi-net:
+    driver: bridge

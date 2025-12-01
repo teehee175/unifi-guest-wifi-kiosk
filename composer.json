@@ -1,0 +1,7 @@
+{
+  "require": {
+    "vlucas/phpdotenv": "^5.6",
+    "endroid/qr-code": "^4.8",
+    "art-of-wifi/unifi-api-client": "^1.1"
+  }
+}
