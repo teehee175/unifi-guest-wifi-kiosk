@@ -191,9 +191,10 @@ See README for full unit definitions.
 
 ## Screenshots
 
-### Kiosk Screen    /    ### Admin Panel
-![Guest Wi-Fi Kiosk Screen](./Guest-Wi-Fi-Kiosk-Screen.png)    ![Guest Wi-Fi Admin Panel](./Guest-Wi-Fi-Admin-Panel.png)
+### Kiosk Screen
+![Guest Wi-Fi Kiosk Screen](./Guest-Wi-Fi-Kiosk-Screen.png)
 
 ### Admin Panel
 ![Guest Wi-Fi Admin Panel](./Guest-Wi-Fi-Admin-Panel.png)
+
 
