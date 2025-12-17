@@ -1,23 +1,45 @@
 version: "3.9"
 
 services:
-  psk-rotator:
-    build: .
-    container_name: psk-rotator
+  unifi-guest-wifi-kiosk:
+    image: docker.io/adamwilton/unifi-guest-wifi-kiosk:latest
+    container_name: unifi-guest-wifi-kiosk
+    pull_policy: always
     restart: unless-stopped
     ports:
       - "8888:80"
     environment:
       TZ: Australia/Sydney
-    volumes:
-      - ./.env:/var/www/html/.env
+
+      # UniFi / Rotation
+      WIFI_SSID: GuestWiFi
+      UNIFI_URL: "https://192.168.1.10"
+      UNIFI_SITE: default
+      UNIFI_USER: psk-rotate
+      UNIFI_PASS: changeme
+      UNIFI_CONTROLLER_TYPE: unifi_os
+      ROTATE_CRON: "0 3 * * *"
+
+      # Admin
+      ADMIN_KEY: changeme
+
+      # Branding / UI
+      LOGO_URL: "https://example.com/logo.png"
+      BACKGROUND_URL: ""
+      THEME: light
+      BG_COLOR: "#000000"
+      INNER_COLOR: "#ffffff"
+      TEXT_COLOR: "#ffffff"
+
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
     networks:
       - unifi-net
+
 networks:
   unifi-net:
     driver: bridge
