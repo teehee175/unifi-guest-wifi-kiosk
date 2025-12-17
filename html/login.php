@@ -1,12 +1,14 @@
 <?php
 require __DIR__ . '/vendor/autoload.php';
+
 use Dotenv\Dotenv;
 
 $dotenv = Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+$dotenv->safeLoad();
+
 session_start();
 
-$ADMIN_KEY = $_ENV['ADMIN_KEY'] ?? '';
+$ADMIN_KEY = getenv('ADMIN_KEY') ?: '';
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,7 +43,7 @@ button { background:#7289da;color:white;border:none;padding:12px;margin-top:15px
 <body>
 <div class="card">
     <h2>Admin Login</h2>
-    <?php if ($error): ?><div class="error"><?= $error ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
     <form method="post">
         <input type="password" name="key" placeholder="Admin Key">
         <button type="submit">Login</button>
