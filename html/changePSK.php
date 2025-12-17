@@ -1,71 +1,158 @@
 <?php
+// html/changePSK.php
+// Rotate the UniFi PSK and return JSON
+
+declare(strict_types=1);
+
 require __DIR__ . '/vendor/autoload.php';
+
 use Dotenv\Dotenv;
-use UniFi_API\Client as UniFiClient;
+use UniFi_API\Client;
 
-$dotenv = Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+// Don't leak notices/warnings into JSON
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+ini_set('display_errors', '0');
 
-/*
- * AUTH ALLOWED:
- * - GET ?key=xxxx    (admin panel)
- * - ADMIN_KEY_CLI env (cron / CLI)
- */
-$incomingKey = $_GET['key'] ?? getenv('ADMIN_KEY_CLI') ?? '';
+header('Content-Type: application/json');
 
-if ($incomingKey !== ($_ENV['ADMIN_KEY'] ?? '')) {
-    http_response_code(403);
-    die(json_encode([
-        'status' => 'error',
-        'message' => 'Unauthorized'
-    ]));
+// ----- Helpers -----
+
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv = Dotenv::createImmutable(__DIR__);
+    $dotenv->safeLoad();
 }
 
-$ssid = $_ENV['WIFI_SSID'] ?? 'GuestWiFi';
-$site = $_ENV['UNIFI_SITE'] ?? 'default';
-$url  = rtrim($_ENV['UNIFI_URL'] ?? '', '/');
-$user = $_ENV['UNIFI_USER'] ?? '';
-$pass = $_ENV['UNIFI_PASS'] ?? '';
+function env_or(string $name, $default = '')
+{
+    // Container env has priority, then .env
+    $v = getenv($name);
+    if ($v === false || $v === '') {
+        $v = $_ENV[$name] ?? $default;
+    }
+    return $v;
+}
 
-$newPsk = substr(
-    str_shuffle('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'),
-    0,  
-    10
-);
+function respond(int $code, array $payload): void
+{
+    http_response_code($code);
+    echo json_encode($payload);
+    exit;
+}
+
+// ----- Auth check -----
+
+$adminKey   = env_or('ADMIN_KEY', '');
+$incoming   = $_GET['key'] ?? env_or('ADMIN_KEY_CLI', '');
+
+if ($adminKey === '' || $incoming !== $adminKey) {
+    respond(403, [
+        'status'  => 'error',
+        'message' => 'Unauthorized',
+    ]);
+}
+
+// ----- Config -----
+
+$ssid = env_or('WIFI_SSID', 'GuestWiFi');
+$site = env_or('UNIFI_SITE', 'default');
+$url  = rtrim(env_or('UNIFI_URL', ''), '/');
+$user = env_or('UNIFI_USER', '');
+$pass = env_or('UNIFI_PASS', '');
+
+if ($url === '' || $user === '' || $pass === '') {
+    respond(500, [
+        'status'  => 'error',
+        'message' => 'UNIFI_URL / UNIFI_USER / UNIFI_PASS must be set.',
+    ]);
+}
+
+if (stripos($url, 'https://') !== 0) {
+    respond(500, [
+        'status'  => 'error',
+        'message' => 'UNIFI_URL must start with https:// (include :8443 for legacy controllers).',
+    ]);
+}
+
+// For UniFi OS (CloudKey Gen2 / UDM etc):
+//   UNIFI_URL = https://192.168.35.10
+// For legacy controller:
+//   UNIFI_URL = https://192.168.35.10:8443
+
+// ----- Generate new PSK -----
+
+$chars   = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+$newPsk  = substr(str_shuffle($chars), 0, 10);
 
 try {
-    $unifi = new UniFiClient($user, $pass, $url, $site, 'default', false);
+    // Build client
+    $unifi = new Client(
+        $user,
+        $pass,
+        $url,
+        $site,
+        '',     // version (auto)
+        false   // ssl_verify = false (we use -k anyway)
+    );
 
-    $login = $unifi->login();
-    if (!$login) {
-        throw new Exception('UniFi login failed');
+    // Swallow any library notices
+    ob_start();
+    $loginOk = $unifi->login();
+    ob_end_clean();
+
+    if (!$loginOk) {
+        respond(500, [
+            'status'  => 'error',
+            'message' => 'UniFi login failed – check credentials, UNIFI_URL and controller firewall.',
+        ]);
     }
 
+    ob_start();
     $wlans = $unifi->list_wlanconf();
-    $target = array_filter($wlans, fn($w) => $w->name === $ssid || $w->ssid === $ssid);
+    ob_end_clean();
 
-    if (!$target) {
-        throw new Exception("SSID $ssid not found");
+    if (!is_array($wlans)) {
+        respond(500, [
+            'status'  => 'error',
+            'message' => 'Failed to fetch WLAN configuration from controller.',
+        ]);
     }
 
-    $wlan = array_values($target)[0];
-    $wlan->x_passphrase = $newPsk;
+    $matches = array_values(array_filter($wlans, function ($w) use ($ssid) {
+        return (
+            (isset($w->name) && $w->name === $ssid) ||
+            (isset($w->ssid) && $w->ssid === $ssid)
+        );
+    }));
 
-    $unifi->set_wlansettings_base($wlan->_id, $wlan);
+    if (empty($matches)) {
+        respond(404, [
+            'status'  => 'error',
+            'message' => "SSID '{$ssid}' not found on controller.",
+        ]);
+    }
+
+    $wlan = $matches[0];
+
+    // Use convenience method to update passphrase
+    $ok = $unifi->set_wlansettings($wlan->_id, $newPsk);
+
+    if (!$ok) {
+        respond(500, [
+            'status'  => 'error',
+            'message' => 'Controller did not accept updated WLAN settings.',
+        ]);
+    }
 
     file_put_contents(__DIR__ . '/password.txt', $newPsk);
 
-    echo json_encode([
-        'status'  => 'success',
-        'ssid'    => $ssid,
-        'psk'     => $newPsk,
-        'updated' => date('c')
+    respond(200, [
+        'status' => 'success',
+        'ssid'   => $ssid,
+        'psk'    => $newPsk,
     ]);
-
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'status' => 'error',
-        'message' => $e->getMessage()
+} catch (Throwable $e) {
+    respond(500, [
+        'status'  => 'error',
+        'message' => 'Unexpected error: ' . $e->getMessage(),
     ]);
 }
