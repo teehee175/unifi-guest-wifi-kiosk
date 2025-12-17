@@ -186,3 +186,13 @@ See README for full unit definitions.
 3. Updates the Wi-Fi network
 4. Generates a QR code
 5. Updates the kiosk display instantly
+
+---
+
+## Screenshots
+
+### Kiosk Screen
+![Guest Wi-Fi Kiosk Screen](./Guest-Wi-Fi-Kiosk-Screen.png)
+
+### Admin Panel
+![Guest Wi-Fi Admin Panel](./Guest-Wi-Fi-Admin-Panel.png)
